@@ -20,7 +20,7 @@ type Handler[T] = T => Frag
 
 trait Callbacks:
   inline def initialize(): Unit =
-    ${ macros.initializeMacroImpl[this.type] }
+    ${ macros.initializeMacroImpl[this.type]('this) }
 
 object Callbacks:
   private[library] val handlers = mutable.Map[String, CallbackBuilder[?, ?]]()

@@ -3,7 +3,9 @@ package macros
 
 import scala.quoted.*
 
-def initializeMacroImpl[T](using Type[T], Quotes): Expr[Unit] =
+def initializeMacroImpl[T](
+    callback: Expr[T]
+)(using Type[T], Quotes): Expr[Unit] =
   import quotes.reflect.*
 
   def isStatic(symbol: Symbol): Boolean =
@@ -12,7 +14,7 @@ def initializeMacroImpl[T](using Type[T], Quotes): Expr[Unit] =
 
   val symbol = TypeRepr.of[T].typeSymbol
 
-  val callbacksAndNames =
+  val callbackBuildersAndNames =
     symbol.declarations
       .filter(d =>
         d.isTerm &&
@@ -21,13 +23,13 @@ def initializeMacroImpl[T](using Type[T], Quotes): Expr[Unit] =
       )
       .map(d =>
         val prettyName = d.fullName.replace('.', '/')
-        (d -> Expr(prettyName))
+        (callback.asTerm.select(d) -> Expr(prettyName))
       )
 
   Expr.block(
-    callbacksAndNames.map { case (callback, name) =>
+    callbackBuildersAndNames.map { case (callbackBuilder, name) =>
       val path = '{ s"/api/${${ name }}" }
-      val cb = Ref(callback).asExprOf[library.CallbackBuilder[?, ?]]
+      val cb = callbackBuilder.asExprOf[library.CallbackBuilder[?, ?]]
       '{
         Callbacks.handlers($path) = ${ cb }
         Callbacks.paths($cb) = ${ path }
