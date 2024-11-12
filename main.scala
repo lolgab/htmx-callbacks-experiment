@@ -26,11 +26,10 @@ def basePage(content: Modifier*) = html(
 )
 
 object callbacks extends Callbacks:
-  object counterButton extends CallbackBuilder[Int, Unit](counter)
-  object addTodo
-      extends CallbackBuilder[List[Todo], Todo]((env, input) =>
-        todolist(env :+ input)
-      )
+  val counterButton =
+    CallbackBuilder.envOnly(counter)
+  val addTodo =
+    CallbackBuilder[List[Todo], Todo]((env, input) => todolist(env :+ input))
 
 def counter(env: Int): Frag =
   div(

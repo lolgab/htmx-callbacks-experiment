@@ -7,6 +7,7 @@ import scalatags.Text.all.*
 import upickle.default.*
 import io.undertow.server.*
 
+import scala.annotation.implicitNotFound
 import scala.collection.mutable
 
 object hx:
@@ -18,7 +19,11 @@ object hx:
 
 type Handler[T] = T => Frag
 
+@implicitNotFound(
+  "CallbackBuilders need to be defined in an object which `extends Callbacks`"
+)
 trait Callbacks:
+  given this.type = this
   inline def initialize(): Unit =
     ${ macros.initializeMacroImpl[this.type]('this) }
 
@@ -35,7 +40,7 @@ def basePage(content: Modifier) = html(
   body(content)
 )
 
-final case class Callback[Env: ReadWriter, Input: ReadWriter](
+final case class Callback[Env, Input](
     callback: CallbackBuilder[Env, Input],
     data: Env
 )
@@ -50,13 +55,11 @@ def postModifiers[T: ReadWriter](cb: Callback[T, ?]) = Seq(
 
 case class WithInput[T](t: T, extraArgs: Map[String, String])
 
-abstract class CallbackBuilder[Env: ReadWriter, Input: ReadWriter](
+final class CallbackBuilder[Env: ReadWriter, Input: ReadWriter](
     render: (env: Env, input: Input) => Frag
-):
-  def this(render: (env: Env) => Frag) =
-    this((env: Env, input: Input) => render(env))
-
-  def apply(env: Env): Callback[Env, Input] = Callback(this, env)
+)(using Callbacks):
+  def apply(env: Env): Callback[Env, Input] =
+    Callback(this, env)
 
   def path: String =
     Callbacks.paths.getOrElse(
@@ -72,3 +75,18 @@ abstract class CallbackBuilder[Env: ReadWriter, Input: ReadWriter](
     json.value.remove(envKey)
     val extraArgs = read[Input](json)
     render(t, extraArgs)
+
+object CallbackBuilder {
+  def apply[Env: ReadWriter, Input: ReadWriter](
+      render: (env: Env, input: Input) => Frag
+  )(using Callbacks) =
+    new CallbackBuilder[Env, Input](render)
+
+  def envOnly[Env: ReadWriter](render: (env: Env) => Frag)(using Callbacks) =
+    new CallbackBuilder[Env, Unit]((env: Env, input: Unit) => render(env))
+
+  def inputOnly[Input: ReadWriter](
+      render: (input: Input) => Frag
+  )(using Callbacks) =
+    new CallbackBuilder[Unit, Input]((env: Unit, input: Input) => render(input))
+}
