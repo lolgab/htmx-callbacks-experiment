@@ -19,7 +19,12 @@ def initializeMacroImpl[T](
       .filter(d =>
         d.isTerm &&
           d.typeRef.baseClasses
-            .exists(c => c.fullName == "library.CallbackBuilder")
+            .exists(c =>
+              c.fullName == TypeRepr
+                .of[library.CallbackBuilder]
+                .typeSymbol
+                .fullName
+            )
       )
       .map(d =>
         val prettyName = d.fullName.replace('.', '/')
