@@ -10,14 +10,14 @@ import upickle.default.*
 object components:
   import scalatags.Text.all
   def button[T: ReadWriter](
-      onClick: Callback[T]
+      onClick: Callback[T, ?]
   )(mods: Modifier*) =
     all.button(
       postModifiers(onClick),
       mods
     )
 
-def basePage(content: Modifier) = html(
+def basePage(content: Modifier*) = html(
   head(
     script(src := "https://unpkg.com/htmx.org@2.0.3"),
     script(src := "https://unpkg.com/htmx.org/dist/ext/json-enc.js")
@@ -26,27 +26,44 @@ def basePage(content: Modifier) = html(
 )
 
 object callbacks extends Callbacks:
-  object counterButton
-      extends CallbackBuilder[Int]((value: Int) => counter(value))
+  object counterButton extends CallbackBuilder[Int, Unit](counter)
+  object addTodo
+      extends CallbackBuilder[List[Todo], Todo]((env, input) =>
+        todolist(env :+ input)
+      )
 
-def counter(value: Int): Frag =
+def counter(env: Int): Frag =
   div(
     "Counter ",
     id := "counter",
-    value,
-    components.button(onClick = callbacks.counterButton(value + 1))(
+    env,
+    components.button(onClick = callbacks.counterButton(env + 1))(
       hx.target := "#counter",
       "+"
     ),
-    components.button(onClick = callbacks.counterButton(value - 1))(
+    components.button(onClick = callbacks.counterButton(env - 1))(
       hx.target := "#counter",
       "-"
     )
   )
 
+case class Todo(text: String) derives ReadWriter
+
+def todolist(todos: List[Todo]): Frag =
+  form(
+    hx.target := "#todo-list",
+    postModifiers(callbacks.addTodo(todos)),
+    "TODO list",
+    id := "todo-list",
+    input(placeholder := "What do you need to do?", name := "text"),
+    todos.map(todo => p(todo.text)),
+    button(tpe := "submit", "Submit")
+  )
+
 @main
 def main: Unit =
   callbacks.initialize()
+  val index = basePage(todolist(List(Todo("Sleep"))), counter(0))
 
   Undertow.builder
     .addHttpListener(8080, "127.0.0.1")
@@ -68,7 +85,7 @@ def main: Unit =
             val content = if (isHTMXRequest) result else basePage(result)
             exchange.getResponseSender.send(content.render)
           case None =>
-            exchange.getResponseSender.send(basePage(counter(1)).render)
+            exchange.getResponseSender.send(index.render)
       }
     })
     .build()

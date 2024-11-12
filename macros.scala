@@ -27,7 +27,7 @@ def initializeMacroImpl[T](using Type[T], Quotes): Expr[Unit] =
   Expr.block(
     callbacksAndNames.map { case (callback, name) =>
       val path = '{ s"/api/${${ name }}" }
-      val cb = Ref(callback).asExprOf[library.CallbackBuilder[?]]
+      val cb = Ref(callback).asExprOf[library.CallbackBuilder[?, ?]]
       '{
         Callbacks.handlers($path) = ${ cb }
         Callbacks.paths($cb) = ${ path }

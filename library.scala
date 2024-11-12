@@ -23,8 +23,8 @@ trait Callbacks:
     ${ macros.initializeMacroImpl[this.type] }
 
 object Callbacks:
-  private[library] val handlers = mutable.Map[String, CallbackBuilder[?]]()
-  private[library] val paths = mutable.Map[CallbackBuilder[?], String]()
+  private[library] val handlers = mutable.Map[String, CallbackBuilder[?, ?]]()
+  private[library] val paths = mutable.Map[CallbackBuilder[?, ?], String]()
 
   def getCallback(path: String) = handlers.get(path)
 
@@ -35,19 +35,28 @@ def basePage(content: Modifier) = html(
   body(content)
 )
 
-final case class Callback[T: ReadWriter](
-    callback: CallbackBuilder[T],
-    data: T
+final case class Callback[Env: ReadWriter, Input: ReadWriter](
+    callback: CallbackBuilder[Env, Input],
+    data: Env
 )
 
-def postModifiers[T: ReadWriter](cb: Callback[T]) = Seq(
+private final val envKey = "_callbackEnvValue"
+
+def postModifiers[T: ReadWriter](cb: Callback[T, ?]) = Seq(
   hx.post := cb.callback.path,
-  hx.vals := write(ValueWrapper(cb.data)),
+  hx.vals := write(ujson.Obj(envKey -> write(cb.data))),
   hx.ext := "json-enc"
 )
 
-trait CallbackBuilder[T: ReadWriter](render: (t: T) => Frag):
-  def apply(t: T): Callback[T] = Callback(this, t)
+case class WithInput[T](t: T, extraArgs: Map[String, String])
+
+abstract class CallbackBuilder[Env: ReadWriter, Input: ReadWriter](
+    render: (env: Env, input: Input) => Frag
+):
+  def this(render: (env: Env) => Frag) =
+    this((env: Env, input: Input) => render(env))
+
+  def apply(env: Env): Callback[Env, Input] = Callback(this, env)
 
   def path: String =
     Callbacks.paths.getOrElse(
@@ -58,6 +67,8 @@ trait CallbackBuilder[T: ReadWriter](render: (t: T) => Frag):
     )
 
   def run(inputStream: java.io.InputStream): Frag =
-    render(read[ValueWrapper[T]](inputStream).value)
-
-private case class ValueWrapper[T](value: T) derives ReadWriter
+    val json = read[ujson.Obj](inputStream)
+    val t = read[Env](json(envKey).str)
+    json.value.remove(envKey)
+    val extraArgs = read[Input](json)
+    render(t, extraArgs)
